@@ -71,18 +71,99 @@ class Pedido(BaseModel):
         "Tipo do pedido: 'ferias' (descanso anual, pode incluir venda de dias), 'abono' (folga de 1 dia útil), "
         "'diaria' (viagem a serviço), 'licenca_saude' (afastamento por doença) ou 'outro'."))
 
+    matricula: str | None = Field(
+        default=None,
+        description=(
+            "Matrícula funcional do servidor, composta por exatamente 4 dígitos. "
+            "Preencha com a matrícula informada pelo servidor. Use None se não tiver sido informada. "
+            "Não invente nem deduza a matrícula."
+        ),
+    )
+
+    data_inicio: str | None = Field(
+        default=None,
+        description=(
+            "Data de início do pedido no formato AAAA-MM-DD (ano-mês-dia). "
+            "Extraia a data informada pelo servidor. Se não for possível identificar a data de início, "
+            "use None. Não invente datas."
+        ),
+    )
+
+    data_fim: str | None = Field(
+        default=None,
+        description=(
+            "Data de término do período solicitado, no formato AAAA-MM-DD (ano-mês-dia). "
+            "Para férias, informe o último dia do período. Para abono pecuniário de um dia útil, "
+            "use a mesma data de data_inicio. Para diária, informe a data final da viagem, se disponível. "
+            "Para outros tipos de pedido, use None quando não houver data final aplicável ou informada."
+        ),
+    )
+
+    dias_vendidos: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+        description=(
+            "Quantidade de dias de férias que o servidor deseja vender, entre 0 e 10, inclusive. "
+            "Este campo só se aplica a pedidos do tipo 'ferias'. "
+            "Para qualquer outro tipo de pedido, incluindo 'abono', o valor deve ser obrigatoriamente 0. "
+            "Preencha com a quantidade explicitamente informada pelo servidor para venda de dias de férias. "
+            "Não confunda a quantidade de dias vendidos com a duração das férias ou com a solicitação de abono."
+        ),
+    )
+
+    destino: str | None = Field(
+        default=None,
+        description=(
+            "Cidade de destino de uma viagem a serviço. Este campo só se aplica a pedidos do tipo 'diaria'. "
+            "Para qualquer outro tipo de pedido, o valor deve ser obrigatoriamente None. "
+            "Em pedidos de diária, preencha somente quando o servidor informar explicitamente o nome de uma cidade. "
+            "O valor deve ser exclusivamente o nome de uma cidade, nunca o tipo de pedido, "
+            "uma modalidade de afastamento, uma justificativa, uma sigla ou o nome de um setor. "
+            "Nunca use palavras como 'abono', 'ferias' ou 'licenca_saude' como destino. "
+            "Se nenhuma cidade tiver sido informada, retorne None."
+        ),
+    )
+
+    tipo_destino: TipoDestino | None = Field(
+        default=None,
+        description=(
+            "Classificação geográfica da cidade de destino, conforme os valores permitidos pelo enum TipoDestino. "
+            "Este campo só se aplica a pedidos do tipo 'diaria' que tenham uma cidade de destino identificada. "
+            "Para qualquer outro tipo de pedido, o valor deve ser obrigatoriamente None. "
+            "Classifique a cidade informada de acordo com os critérios definidos pelo enum. "
+            "Nunca determine a classificação com base no tipo do pedido, na justificativa ou em palavras como "
+            "'abono' e 'ferias'. Se não houver cidade identificada ou não for possível determinar sua classificação, "
+            "retorne None."
+        ),
+    )
+
+    justificativa: str = Field(
+        description=(
+            "Resumo breve e objetivo do motivo do pedido, com base exclusivamente nas informações fornecidas "
+            "pelo servidor. Não inclua dados pessoais desnecessários nem informações de saúde, diagnósticos, "
+            "sintomas ou detalhes clínicos. Para pedidos de licença-saúde, registre apenas uma descrição genérica "
+            "do afastamento, sem revelar informações médicas. Não invente justificativas."
+        ),
+    )
+
 
 def criar_extrator(instrucoes: str, input_guardrails: list | None = None) -> Agent:
     # ETAPA 2.2 -- devolva Agent(name="Extrator", instructions=instrucoes, output_type=Pedido,
     #   input_guardrails=input_guardrails or [])
     #   (os guardrails só entram na Etapa 3; até lá, a lista fica vazia)
-    raise NotImplementedError("ETAPA 2.2: criar_extrator")
+    return Agent(
+        name="Extrator",
+        instructions=instrucoes,   
+        output_type=Pedido,
+        input_guardrails=input_guardrails or []
+)
 
 
 INSTRUCOES_EXTRATOR = (
     f"Hoje é {texto_hoje()}. "  # (PRONTO) a data real: o modelo não tem relógio (aula3/agente_retry.py)
     "Você extrai pedidos de servidores para o RH (férias, abono ou diária). "
-    "TODO ETAPA 2.2: complete -- datas no formato AAAA-MM-DD, não invente o que não foi dito (use null), "
+    "Complete datas no formato AAAA-MM-DD, não invente o que não foi dito (use null), "
     "dias vendidos só se o servidor pedir explicitamente."
 )
 
@@ -90,7 +171,11 @@ INSTRUCOES_EXTRATOR = (
 def extrair(texto: str) -> Pedido:
     # ETAPA 2.3 -- rode criar_extrator(INSTRUCOES_EXTRATOR) com Runner.run_sync e devolva final_output
     #   (é um objeto Pedido, não texto!)
-    raise NotImplementedError("ETAPA 2.3: extrair")
+    resultado = Runner.run_sync(
+            criar_extrator(INSTRUCOES_EXTRATOR),
+            texto
+        )
+    return resultado.final_output
 
 
 # ------------------------------------------------------------------ 🆕 A: votação (OPCIONAL, bônus)

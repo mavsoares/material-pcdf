@@ -65,8 +65,17 @@ class Governanca(RunHooks):
     async def on_tool_end(self, context, agent, tool, result) -> None:
         # ETAPA 10.1 -- acrescente a self.eventos: {"agente", "tool", "argumentos", "resultado" (truncado)}.
         #   Os argumentos estão em context.tool_arguments (texto JSON) quando a tool é uma function_tool.
-        pass
+        self.eventos.append({
+            "agente": getattr(agent, "name", "?"),
+            "tool": getattr(tool, "name", "?"),
+            "argumentos": getattr(context, "tool_arguments", None),
+            "resultado": str(result)[:300],
+        })
 
     async def on_agent_end(self, context, agent, output) -> None:
         # ETAPA 10.1 -- acrescente a self.eventos os tokens até aqui: context.usage.total_tokens
-        pass
+        self.eventos.append({
+            "agente": getattr(agent, "name", "?"),
+            "tokens": getattr(getattr(context, "usage", None), "total_tokens", 0),
+            "saida": str(output)[:300],
+        })

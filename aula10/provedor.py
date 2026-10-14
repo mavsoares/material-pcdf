@@ -1,11 +1,12 @@
 """
-provedor.py -- (PRONTO, copiado de aula7/provedor.py) configura o SDK de agentes (openai-agents) para o provedor escolhido em PROVEDOR (.env).
+provedor.py -- configura o SDK de agentes (openai-agents) para o provedor escolhido em PROVEDOR (.env).
 
 Mesmo mecanismo das Aulas 2 a 5: os agentes são `Agent(name=..., instructions=...)` e rodam com `Runner`.
-Quem muda de OpenAI para Ollama é só esta função; os agentes e o grafo NÃO mudam.
+Quem muda de provedor é só esta função; os agentes e o grafo NÃO mudam.
 
-    PROVEDOR=openai  (padrão) OpenAI      -> OPENAI_API_KEY, OPENAI_DEFAULT_MODEL (gpt-4o-mini)
-    PROVEDOR=ollama  Ollama local, grátis -> OLLAMA_BASE_URL, OLLAMA_MODEL (o modelo precisa estar baixado)
+    PROVEDOR=openai      (padrão) OpenAI   -> OPENAI_API_KEY, OPENAI_DEFAULT_MODEL (gpt-4o-mini)
+    PROVEDOR=ollama      Ollama local      -> OLLAMA_BASE_URL, OLLAMA_MODEL (o modelo precisa estar baixado)
+    PROVEDOR=openrouter  OpenRouter        -> OPENROUTER_API_KEY, OPENROUTER_MODEL (ex.: google/gemini-2.0-flash-001)
 
 Sem a chave (ou sem o Ollama no ar) o programa PARA com uma mensagem dizendo o que fazer: não há LLM de mentira.
 """
@@ -23,15 +24,16 @@ load_dotenv()
 AJUDA = (
     "Configure um provedor real: copie o .env.example para .env e preencha.\n"
     "  - OpenAI: PROVEDOR=openai e OPENAI_API_KEY=...\n"
+    "  - OpenRouter: PROVEDOR=openrouter, OPENROUTER_API_KEY=... e OPENROUTER_MODEL=fabricante/modelo\n"
     "  - Ollama (grátis, local): PROVEDOR=ollama, `ollama serve` no ar e o modelo baixado (`ollama pull <modelo>`)."
 )
 
 
-def _cliente(base_url: str | None, api_key: str) -> AsyncOpenAI:
+def _cliente(base_url: str | None, api_key: str, headers: dict[str, str] | None = None) -> AsyncOpenAI:
     # O LangGraph executa cada nó síncrono numa thread, e cada Runner.run_sync() cria o seu próprio laço de
     # eventos. Conexões HTTP reaproveitadas entre laços diferentes travam: por isso, sem conexões persistentes.
     http = httpx.AsyncClient(limits=httpx.Limits(max_keepalive_connections=0), timeout=180)
-    return AsyncOpenAI(base_url=base_url, api_key=api_key, http_client=http)
+    return AsyncOpenAI(base_url=base_url, api_key=api_key, http_client=http, default_headers=headers)
 
 
 def _modelos_do_ollama(base_url: str) -> list[str] | None:
@@ -57,6 +59,22 @@ def configurar() -> str:
         set_default_openai_client(_cliente(None, chave))
         return f"openai:{modelo}"
 
+    if provedor == "openrouter":
+        chave = os.getenv("OPENROUTER_API_KEY")
+        if not chave:
+            raise SystemExit("PROVEDOR=openrouter exige OPENROUTER_API_KEY.\n" + AJUDA)
+        modelo = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
+        base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+        headers = {}  # opcionais: identificam seu app nos rankings do OpenRouter
+        if os.getenv("OPENROUTER_REFERER"):
+            headers["HTTP-Referer"] = os.environ["OPENROUTER_REFERER"]
+        if os.getenv("OPENROUTER_TITLE"):
+            headers["X-Title"] = os.environ["OPENROUTER_TITLE"]
+        os.environ["OPENAI_DEFAULT_MODEL"] = modelo
+        set_default_openai_client(_cliente(base_url, chave, headers or None))
+        set_default_openai_api("chat_completions")  # o OpenRouter não implementa a Responses API
+        return f"openrouter:{modelo}"
+
     if provedor == "ollama":
         base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
         modelo = os.getenv("OLLAMA_MODEL", "llama3.1")
@@ -71,4 +89,4 @@ def configurar() -> str:
         set_default_openai_api("chat_completions")  # o Ollama não implementa a Responses API
         return f"ollama:{modelo}"
 
-    raise SystemExit(f"PROVEDOR desconhecido: {provedor!r}. Use openai ou ollama.")
+    raise SystemExit(f"PROVEDOR desconhecido: {provedor!r}. Use openai, openrouter ou ollama.")

@@ -35,8 +35,14 @@ MODELO = configurar()  # LLM REAL: PROVEDOR no .env (openai ou ollama)
 #   Referência: exercicios_resolvidos/aula4/ex10_function_tool.py (consultar_protocolo)
 @function_tool
 def consultar_servidor(matricula: str) -> str:
-    """TODO: escreva a docstring (o que a tool faz e o que é o argumento)."""
-    raise NotImplementedError("ETAPA 1.1: consultar_servidor")
+    """Consulta um servidor público dado a matrícula correspondente.
+    
+    Args:
+        matricula: número de matrícula do servidor público, ex.: "1001", "1002", "1003".
+    """
+    print("[tool] consultar_servidor", matricula) 
+    return json.dumps(servidor_publico(matricula), ensure_ascii=False)
+
 
 
 def criar_atendente() -> Agent:
@@ -45,7 +51,12 @@ def criar_atendente() -> Agent:
     #   Instruções: atende servidores, responde em português e de forma breve, usa a tool quando a pergunta
     #   for sobre os dados de UM servidor, e não inventa saldo de cabeça.
     #   Referência: aula1/segundo_agente.py
-    raise NotImplementedError("ETAPA 1.2: criar_atendente")
+    return Agent(
+       name="AtendenteRH agente",
+        instructions="Você é um agente que atende servidores públicos. Responda em português e de forma breve. " \
+        "Use a tool consultar_servidor quando a pergunta for sobre os dados de UM servidor, e não invente saldo de cabeça.",
+        tools=[consultar_servidor],
+)
 
 
 def main() -> None:
@@ -53,7 +64,13 @@ def main() -> None:
     #   1) "Quantos dias de férias a matrícula 1002 ainda tem?"   (precisa da tool)
     #   2) "O que é abono pecuniário?"                            (não precisa)
     #   Referência: aula8/exemplos/02_agente_tool/main.py
-    raise NotImplementedError("ETAPA 1.3: main")
+    atendente = criar_atendente();
+
+    resultado = Runner.run_sync(atendente, "Quantos dias de férias a matrícula 1002 ainda tem?")
+    print(resultado.final_output)
+
+    resultado = Runner.run_sync(atendente, "O que é abono pecuniário?")
+    print(resultado.final_output)
 
 
 if __name__ == "__main__":

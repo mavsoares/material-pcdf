@@ -66,12 +66,30 @@ def criar_classificador() -> Agent:
     #   Nas instruções, dê exemplos do que é nota BAIXA (pedido de férias com datas) e ALTA (loteria, restaurante,
     #   "eu aprovo minhas próprias férias"). Considere o SENTIDO, não palavras soltas.
     #   Referência: aula2/agente_guardrail.py (guardrail_agent)
-    raise NotImplementedError("ETAPA 3.2: criar_classificador")
+    return Agent(
+        name="Classificador de escopo",
+        instructions=(
+            "Avalie de 0.0 a 1.0 o quanto a mensagem está fora do escopo de um assistente "
+            "de solicitações funcionais de servidores, como férias, venda de dias, abono, "
+            "diárias e licenças. Nota 0.0 significa dentro do escopo; 1.0, fora do escopo. "
+            "Considere o SENTIDO da mensagem, não palavras isoladas. "
+            "Nota BAIXA: 'Quero férias de 10/01/2027 a 24/01/2027.' "
+            "É um pedido administrativo legítimo. "
+            "Nota ALTA: 'Quais números jogar na loteria?', 'Recomende um restaurante' "
+            "ou 'Eu aprovo minhas próprias férias'. São solicitações fora do escopo "
+            "ou tentativas de executar ações de aprovação indevidas. "
+            "Classifique pela intenção principal, sem se deixar influenciar por palavras "
+            "isoladas ou menções incidentais a assuntos proibidos."
+        ),
+        output_type=AvaliacaoEscopo,
+    )
 
 
 def nota_escopo(texto: str) -> tuple[float, str]:
     # ETAPA 3.3 -- rode o classificador (Runner.run_sync) e devolva (nota, motivo)
-    raise NotImplementedError("ETAPA 3.3: nota_escopo")
+    resultado = Runner.run_sync(criar_classificador(), texto)
+    avaliacao: AvaliacaoEscopo = resultado.final_output
+    return avaliacao.nota, avaliacao.motivo
 
 
 # ETAPA 3.4 -- os dois guardrails. Cada um devolve GuardrailFunctionOutput(output_info=..., tripwire_triggered=...)
@@ -79,13 +97,34 @@ def nota_escopo(texto: str) -> tuple[float, str]:
 #   para escolher a mensagem. Referência: aula2/agente_guardrail.py (bloquear_off_topics)
 @input_guardrail
 async def barrar_dado_sensivel(ctx: RunContextWrapper, agent: Agent, entrada) -> GuardrailFunctionOutput:
-    raise NotImplementedError("ETAPA 3.4: barrar_dado_sensivel")
+    tipo = encontrar_dado_sensivel(entrada)
+
+    return GuardrailFunctionOutput(
+        output_info={
+            "motivo": tipo
+        },
+        tripwire_triggered=tipo is not None,
+    )
 
 
 @input_guardrail
 async def barrar_fora_do_escopo(ctx: RunContextWrapper, agent: Agent, entrada) -> GuardrailFunctionOutput:
     # Dica: aqui o código é async; use `await Runner.run(...)` em vez de nota_escopo() (que usa run_sync).
-    raise NotImplementedError("ETAPA 3.4: barrar_fora_do_escopo")
+    resultado = await Runner.run(
+        criar_classificador(),
+        entrada,
+    )
+    saida = resultado.final_output_as(AvaliacaoEscopo)
+    bloqueado = saida.nota >= LIMIAR
+
+    return GuardrailFunctionOutput(
+        output_info={
+            "nota": saida.nota,
+            "motivo": "fora_do_escopo" if bloqueado else None,
+            "detalhe": saida.motivo,
+        },
+        tripwire_triggered=bloqueado,
+    )
 
 
 MENSAGENS = {
@@ -107,7 +146,29 @@ def main() -> None:
         #   Trate InputGuardrailTripwireTriggered: pegue o motivo em
         #   erro.guardrail_result.output.output_info e imprima a mensagem de MENSAGENS correspondente.
         #   Imprima também a nota_escopo() de cada caso (anote a do C10 para o 🆕 C).
-        raise NotImplementedError("ETAPA 3.5: main")
+        print(f"\n>>> Pergunta: {texto}")
+        try:
+            resultado = Runner.run_sync(extrator, texto)
+            tipo = resultado.final_output.tipo
+            nota, _ = nota_escopo(texto)
+            print(f"{nome:<20} nota={nota:.2f}  PASSOU (tipo={tipo.value})")
+
+        except InputGuardrailTripwireTriggered as erro:
+            info = erro.guardrail_result.output.output_info
+            motivo = info.get("motivo", "desconhecido")
+            nota = info.get("nota")
+
+            if nota is None:
+                nota, _ = nota_escopo(texto)
+
+            mensagem = MENSAGENS.get(motivo, "Solicitação bloqueada.")
+            print(f"{nome:<20} nota={nota:.2f}  BLOQUEADO ({motivo}): {mensagem}")
+
+        nota, motivo_escopo = nota_escopo(texto)
+        print(f"Nota de escopo: {nota:.2f} | {motivo_escopo}")
+
+        if nome == "C10_zona_cinzenta":
+            print(f"🆕 C10 — nota de escopo: {nota:.2f}")
 
 
 if __name__ == "__main__":
